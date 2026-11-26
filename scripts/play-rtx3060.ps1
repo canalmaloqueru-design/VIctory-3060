@@ -119,6 +119,14 @@ $set = [ordered]@{
 
   # ---- Auto-pulo de telas iniciais -----------------------------------------
   VICTORY_AUTO_A              = '300'
+
+  # ---- RAGE C++ Shim (winmm.dll: FpsGovernor + ShaderStreamScheduler) ------
+  SHIM_FPS_TARGET             = '10'
+  SHIM_SHADER_BUDGET_MS       = '60'
+  SHIM_HOT_THREADS            = '4'
+  SHIM_WARM_THREADS           = '6'
+  SHIM_DRAW_TIMEOUT_MS        = '8000'
+  SHIM_VRAM_THROTTLE_PCT      = '82'
 }
 
 if ($NoThin) { $set.Remove('VICTORY_THIN'); $set.Remove('VICTORY_PASSES_AHEAD') }

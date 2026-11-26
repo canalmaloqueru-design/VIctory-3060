@@ -1,4 +1,17 @@
-# VIctory on an RX 7900 XTX
+# VIctory-3060 (RTX 3060 12 GB + Series S)
+
+Fork de [avatarmanz/VIctory-7900XTX](https://github.com/avatarmanz/VIctory-7900XTX) (baseado em [Marvisak/VIctory](https://github.com/Marvisak/VIctory)) adaptado para **NVIDIA GeForce RTX 3060 (12 GB VRAM)**, **32 GB RAM** e perfil **Xbox Series S** com `amd_fidelityfx_upscaler_dx12.dll`.
+
+## Melhorias integradas (2026-11-26)
+- Mesclado de [Belobug/VIctory-Belobug-AMD](https://github.com/Belobug/VIctory-Belobug-AMD) (`81ebb7b`):
+  - Filtro de resíduos magenta no passe de luz indireta (`ambient.rs`).
+  - Liberação antecipada de VRAM ociosa (a partir de 82% / 90% do orçamento, ideal para 12 GB de VRAM) e guarda `room_lately()` em `keep_shown`.
+  - *Compiler guard* VEH lock-free (`pipeline/make.rs`) para evitar crash do driver durante compilação de shaders problemáticos (`warm-bad.txt`).
+- Script de lançamento dedicado para RTX 3060 12 GB + Series S: [`scripts/play-rtx3060.ps1`](scripts/play-rtx3060.ps1) (`VICTORY_CARD_WINDOWS_MB=2048`, `VICTORY_CARD_BUFFERS_MB=1024`, `VICTORY_WIDE_THREADS=12`).
+
+---
+
+# VIctory on an RX 7900 XTX (Upstream)
 
 A fork of [VIctory](https://github.com/Marvisak/VIctory), a compatibility layer
 that runs an Xbox Series title natively on Windows from files the user supplies.

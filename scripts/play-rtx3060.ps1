@@ -150,8 +150,9 @@ function Set-IniValue([string]$Text, [string]$Section, [string]$Key, [string]$Va
   $lines -join "`r`n"
 }
 
-function Initialize-Opti([string]$Exe, [string]$OptiDir, [string]$Upscaler) {
-  $to = Join-Path (Split-Path $Exe -Parent) 'opti'
+function Initialize-Opti([string]$Exe, [string]$OptiDir, [string]$Upscaler, [bool]$UseFrameGen) {
+  $root = Split-Path $Exe -Parent
+  $to = Join-Path $root 'opti'
   New-Item -ItemType Directory -Force $to | Out-Null
   $stamp = Join-Path $to 'optiscaler.from'
   $from = (Get-Item (Join-Path $OptiDir 'OptiScaler.dll')).LastWriteTimeUtc.Ticks.ToString() + ' ' + $OptiDir
@@ -164,15 +165,25 @@ function Initialize-Opti([string]$Exe, [string]$OptiDir, [string]$Upscaler) {
   }
   $ini = Get-Content (Join-Path $OptiDir 'OptiScaler.ini') -Raw
   $ini = Set-IniValue $ini 'Upscalers'  'Dx12Upscaler' $Upscaler
-  $ini = Set-IniValue $ini 'FrameGen'   'Enabled'       'true'
-  $ini = Set-IniValue $ini 'FrameGen'   'FGInput'       'upscaler'
-  $ini = Set-IniValue $ini 'FrameGen'   'FGOutput'      'fsrfg'
-  $ini = Set-IniValue $ini 'FSRFG'      'AllowAsync'    'true'
-  $ini = Set-IniValue $ini 'OptiFG'     'DisableHUDFix' 'true'
+  $ini = Set-IniValue $ini 'FrameGen'   'Enabled'      ($(if ($UseFrameGen) { 'true' } else { 'false' }))
+  if ($UseFrameGen) {
+    $ini = Set-IniValue $ini 'FrameGen'   'FGInput'       'upscaler'
+    $ini = Set-IniValue $ini 'FrameGen'   'FGOutput'      'fsrfg'
+    $ini = Set-IniValue $ini 'FSRFG'      'AllowAsync'    'true'
+    $ini = Set-IniValue $ini 'OptiFG'     'DisableHUDFix' 'true'
+  }
   Set-Content (Join-Path $to 'OptiScaler.ini') $ini -NoNewline
   $copy = Join-Path $to (Split-Path $Exe -Leaf)
   if (-not (Test-Path $copy) -or (Get-Item $copy).LastWriteTimeUtc -ne (Get-Item $Exe).LastWriteTimeUtc -or (Get-Item $copy).Length -ne (Get-Item $Exe).Length) {
     Copy-Item $Exe $copy -Force
+  }
+  # Manter o shim C++ winmm.dll e nvngx_dlss.dll ao lado do exe em opti\ se existirem
+  foreach ($extra in @('winmm.dll', 'nvngx_dlss.dll', 'amd_fidelityfx_upscaler_dx12.dll')) {
+    $srcExtra = Join-Path $root $extra
+    $dstExtra = Join-Path $to $extra
+    if ((Test-Path $srcExtra) -and (-not (Test-Path $dstExtra) -or (Get-Item $srcExtra).LastWriteTimeUtc -ne (Get-Item $dstExtra).LastWriteTimeUtc)) {
+      Copy-Item $srcExtra $dstExtra -Force
+    }
   }
   $copy
 }
@@ -184,13 +195,26 @@ if ($OptiScaler -and -not (Test-Path (Join-Path $OptiScaler 'OptiScaler.dll'))) 
 if ($FrameGen -and -not $OptiScaler) { '-FrameGen requer -OptiScaler <pasta>'; exit 1 }
 
 if (-not $SeriesX) {
-  if ($FrameGen) {
-    $exe    = Initialize-Opti $exe (Resolve-Path $OptiScaler).Path $Upscaler
-    $FsrDll = Join-Path (Split-Path $exe -Parent) 'amd_fidelityfx_dx12.dll'
-  } elseif (-not $FsrDll) {
-    $candidates = @(Join-Path $PSScriptRoot 'amd_fidelityfx_upscaler_dx12.dll')
-    if ($OptiScaler) { $candidates = @(Join-Path $OptiScaler 'amd_fidelityfx_upscaler_dx12.dll') + $candidates }
-    $FsrDll = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  $useOpti = $OptiScaler -and ($FrameGen -or $Upscaler -eq 'dlss')
+  if ($useOpti) {
+    $exe = Initialize-Opti $exe (Resolve-Path $OptiScaler).Path $Upscaler ([bool]$FrameGen)
+    $optiDir = Split-Path $exe -Parent
+    $optiFsr = Join-Path $optiDir 'amd_fidelityfx_dx12.dll'
+    if (Test-Path $optiFsr) {
+      $FsrDll = $optiFsr
+    } else {
+      $FsrDll = Join-Path $optiDir 'amd_fidelityfx_upscaler_dx12.dll'
+    }
+    Write-Host "[Neptune] OptiScaler ativo: Upscaler=$Upscaler | FrameGen=$([bool]$FrameGen)" -ForegroundColor Green
+  } else {
+    if ($Upscaler -eq 'dlss' -and -not $OptiScaler) {
+      Write-Host '[Neptune] AVISO: OptiScaler.dll nao encontrado em .\OptiScaler\ - usando FSR padrao (baixe OptiScaler para ativar DLSS)' -ForegroundColor Yellow
+    }
+    if (-not $FsrDll) {
+      $candidates = @(Join-Path $PSScriptRoot 'amd_fidelityfx_upscaler_dx12.dll')
+      if ($OptiScaler) { $candidates = @(Join-Path $OptiScaler 'amd_fidelityfx_upscaler_dx12.dll') + $candidates }
+      $FsrDll = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    }
   }
   if ($FsrDll -and (Test-Path $FsrDll)) {
     $set['VICTORY_FSR_DLL'] = (Resolve-Path $FsrDll).Path

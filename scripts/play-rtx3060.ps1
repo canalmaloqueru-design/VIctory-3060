@@ -1,21 +1,21 @@
-# ============================================================================
+﻿# ============================================================================
 # Neptune (VIctory Edit.) -- Perfil engenheirado RTX 3060 12 GB + Series S
-# Build: 2026-11-26 | Warm: 51506 shaders / 1713 MB cache + 2729 compute pipelines
-# Rev3: corrigido encoding/parse errors, evict 82%, mip-clamp 5, shader 8s
+# Build: 2026-11-26 | Warm: 51506 shaders / 1713 MB cache + 2729 compute
+# Rev4: corrigido syntax, cache em F:, sem UNDER_WRITES, fix facial anim
 # ============================================================================
 #
 # Uso:
-#   .\play.ps1                      -> Series S 720p->1080p, perfil completo
-#   .\play.ps1 -Warm                -> pre-aquece shaders (~7 min) e abre
-#   .\play.ps1 -Safe                -> remove flags mais experimentais (crash safety)
-#   .\play.ps1 -SeriesX             -> forcar 4K Series X
-#   .\play.ps1 -FrametimeDump       -> grava frametime.csv no cache
-#   .\play.ps1 -OptiScaler <pasta>  -> usa OptiScaler para upscale / frame gen
-#   .\play.ps1 -FrameGen            -> (requer -OptiScaler) frame generation
+#   .\play.ps1                      Series S 720p->1080p, perfil completo
+#   .\play.ps1 -Warm                pre-aquece shaders (~7 min) e abre
+#   .\play.ps1 -Safe                remove flags experimentais (crash safety)
+#   .\play.ps1 -SeriesX             forcado 4K Series X
+#   .\play.ps1 -FrametimeDump       grava frametime.csv no cache
+#   .\play.ps1 -Upscaler dlss       usa DLSS via OptiScaler
+#   .\play.ps1 -FrameGen            frame generation (requer OptiScaler)
 #
 # Controles (teclado+mouse):
 #   F9 / clique na janela: trava/solta mouse   Alt+Tab: solta
-#   WASD: mover   Mouse: camera   BotDirMouse/BotEsqMouse: RT/LT
+#   WASD: mover   Mouse: camera
 #   Shift/Ctrl: L3/R3   Espaco/Backspace/X/Y: A/B/X/Y   Q/E: LB/RB
 #   Esc: Menu   Tab: View   F10: ocultar HUD   F12: screenshot
 # ============================================================================
@@ -33,7 +33,35 @@ param(
   [switch]$FrametimeDump
 )
 
-if (-not (Test-Path -LiteralPath $Game)) { "Jogo nao encontrado: $Game"; exit 1 }
+if (-not (Test-Path -LiteralPath $Game)) { Write-Host "Jogo nao encontrado: $Game"; exit 1 }
+
+# Diretórios de cache e dados no drive F: (evita sobrecarregar o C:)
+$cacheDir = 'F:\jogo\victory_cache'
+$dataDir  = 'F:\jogo\victory_data'
+New-Item -ItemType Directory -Force $cacheDir | Out-Null
+New-Item -ItemType Directory -Force $dataDir  | Out-Null
+
+# Migrar cache existente do C: para o F: (executa apenas uma vez)
+$oldCache = Join-Path $env:LOCALAPPDATA 'victory\cache'
+$oldData  = Join-Path $env:LOCALAPPDATA 'victory\data'
+if (Test-Path $oldCache) {
+  $markerFile = Join-Path $cacheDir '.migrated_from_c'
+  if (-not (Test-Path $markerFile)) {
+    Write-Host '[Neptune] Migrando cache do C: para F: (primeira vez, aguarde)...' -ForegroundColor Yellow
+    Copy-Item -Recurse -Force $oldCache $cacheDir -ErrorAction SilentlyContinue
+    Set-Content -Path $markerFile -Value (Get-Date).ToString() -Encoding ascii
+    Write-Host '[Neptune] Cache migrado com sucesso para F:\jogo\victory_cache' -ForegroundColor Green
+  }
+}
+if (Test-Path $oldData) {
+  $markerFile2 = Join-Path $dataDir '.migrated_from_c'
+  if (-not (Test-Path $markerFile2)) {
+    Write-Host '[Neptune] Migrando dados do C: para F: (primeira vez, aguarde)...' -ForegroundColor Yellow
+    Copy-Item -Recurse -Force $oldData $dataDir -ErrorAction SilentlyContinue
+    Set-Content -Path $markerFile2 -Value (Get-Date).ToString() -Encoding ascii
+    Write-Host '[Neptune] Dados migrados com sucesso para F:\jogo\victory_data' -ForegroundColor Green
+  }
+}
 
 # Auto-detectar OptiScaler ao lado do script
 if (-not $OptiScaler) {
@@ -42,6 +70,10 @@ if (-not $OptiScaler) {
 }
 
 $set = [ordered]@{
+  # ---- Cache / dados em F: (nao usa C:) -------------------------------------
+  VICTORY_CACHE_DIR           = $cacheDir
+  VICTORY_DATA_DIR            = $dataDir
+
   # ---- Threads / CPU (i5-14600KF: 14 cores / 20 threads) -------------------
   VICTORY_WIDE_THREADS        = '12'
   VICTORY_FAST_CORES          = '2'
@@ -90,6 +122,9 @@ $set = [ordered]@{
   VICTORY_LIST_POOL_MB        = '1024'
   VICTORY_LATE_WAIT_LISTS     = '1024'
 
+  # ---- Streaming memory fix (Pool crash): espera maior por slots -----------
+  VICTORY_DYNAMIC_WAIT_MS     = '60'
+
   # ---- Texturas / streaming ------------------------------------------------
   VICTORY_TEXTURE_NO_WAIT     = '1'
   VICTORY_TEXTURE_CATCH_UP_MS = '2'
@@ -97,12 +132,7 @@ $set = [ordered]@{
   VICTORY_EARLY_TEXTURES_MS   = '40'
   VICTORY_REUPLOAD_WHEN_FULL  = '1'
 
-  # ---- Miscelas Neptune ----------------------------------------------------
-  VICTORY_WAVE_OWN_LDS_GROUPS = '64,128'
-  VICTORY_UNDER_WRITES_WORDS  = '1'
-  VICTORY_UNDER_WRITES_RUNS   = '100000'
-  VICTORY_UNDER_WRITES_MASKS  = '1'
-  VICTORY_UNDER_WRITES_MASKS_LEAST = '1'
+  # ---- Misc Neptune --------------------------------------------------------
   VICTORY_ASK_ONCE            = '1'
   VICTORY_ASK_QUIET           = '8'
   VICTORY_D3D12_BACKGROUND    = '0'
@@ -144,18 +174,20 @@ function Set-IniValue([string]$Text, [string]$Section, [string]$Key, [string]$Va
   $in = $false; $done = $false
   for ($i = 0; $i -lt $lines.Count; $i++) {
     if ($lines[$i] -match '^\[(.+)\]\s*$') { $in = ($Matches[1] -eq $Section); continue }
-    if ($in -and -not $done -and $lines[$i] -match ('^' + [regex]::Escape($Key) + '\s*=')) { $lines[$i] = "$Key=$Value"; $done = $true }
+    if ($in -and -not $done -and $lines[$i] -match ('^' + [regex]::Escape($Key) + '\s*=')) {
+      $lines[$i] = "$Key=$Value"; $done = $true
+    }
   }
   if (-not $done) { Write-Warning "OptiScaler.ini: no $Key in [$Section]" }
   $lines -join "`r`n"
 }
 
-function Initialize-Opti([string]$Exe, [string]$OptiDir, [string]$Upscaler, [bool]$UseFrameGen) {
+function Initialize-Opti([string]$Exe, [string]$OptiDir, [string]$UpscalerName, [bool]$UseFrameGen) {
   $root = Split-Path $Exe -Parent
-  $to = Join-Path $root 'opti'
+  $to   = Join-Path $root 'opti'
   New-Item -ItemType Directory -Force $to | Out-Null
   $stamp = Join-Path $to 'optiscaler.from'
-  $from = (Get-Item (Join-Path $OptiDir 'OptiScaler.dll')).LastWriteTimeUtc.Ticks.ToString() + ' ' + $OptiDir
+  $from  = (Get-Item (Join-Path $OptiDir 'OptiScaler.dll')).LastWriteTimeUtc.Ticks.ToString() + ' ' + $OptiDir
   if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $from) {
     Get-ChildItem $OptiDir -File | Where-Object { $_.Extension -in '.dll', '.ini' } | Copy-Item -Destination $to -Force
     Get-ChildItem $OptiDir -Directory | Where-Object { $_.Name -ne 'Licenses' } | Copy-Item -Destination $to -Recurse -Force
@@ -164,40 +196,50 @@ function Initialize-Opti([string]$Exe, [string]$OptiDir, [string]$Upscaler, [boo
     Set-Content $stamp $from
   }
   $ini = Get-Content (Join-Path $OptiDir 'OptiScaler.ini') -Raw
-  $ini = Set-IniValue $ini 'Upscalers'  'Dx12Upscaler' $Upscaler
-  $ini = Set-IniValue $ini 'FrameGen'   'Enabled'      ($(if ($UseFrameGen) { 'true' } else { 'false' }))
+  $ini = Set-IniValue $ini 'Upscalers' 'Dx12Upscaler' $UpscalerName
+  $ini = Set-IniValue $ini 'FrameGen'  'Enabled'      ($(if ($UseFrameGen) { 'true' } else { 'false' }))
   if ($UseFrameGen) {
-    $ini = Set-IniValue $ini 'FrameGen'   'FGInput'       'upscaler'
-    $ini = Set-IniValue $ini 'FrameGen'   'FGOutput'      'fsrfg'
-    $ini = Set-IniValue $ini 'FSRFG'      'AllowAsync'    'true'
-    $ini = Set-IniValue $ini 'OptiFG'     'DisableHUDFix' 'true'
+    $ini = Set-IniValue $ini 'FrameGen' 'FGInput'       'upscaler'
+    $ini = Set-IniValue $ini 'FrameGen' 'FGOutput'      'fsrfg'
+    $ini = Set-IniValue $ini 'FSRFG'    'AllowAsync'    'true'
+    $ini = Set-IniValue $ini 'OptiFG'   'DisableHUDFix' 'true'
   }
   Set-Content (Join-Path $to 'OptiScaler.ini') $ini -NoNewline
   $copy = Join-Path $to (Split-Path $Exe -Leaf)
-  if (-not (Test-Path $copy) -or (Get-Item $copy).LastWriteTimeUtc -ne (Get-Item $Exe).LastWriteTimeUtc -or (Get-Item $copy).Length -ne (Get-Item $Exe).Length) {
+  if (-not (Test-Path $copy) -or
+      (Get-Item $copy).LastWriteTimeUtc -ne (Get-Item $Exe).LastWriteTimeUtc -or
+      (Get-Item $copy).Length           -ne (Get-Item $Exe).Length) {
     Copy-Item $Exe $copy -Force
   }
-  # Manter o shim C++ winmm.dll e nvngx_dlss.dll ao lado do exe em opti\ se existirem
+  # Manter shims ao lado do exe em opti\ se existirem
   foreach ($extra in @('winmm.dll', 'nvngx_dlss.dll', 'amd_fidelityfx_upscaler_dx12.dll')) {
     $srcExtra = Join-Path $root $extra
-    $dstExtra = Join-Path $to $extra
-    if ((Test-Path $srcExtra) -and (-not (Test-Path $dstExtra) -or (Get-Item $srcExtra).LastWriteTimeUtc -ne (Get-Item $dstExtra).LastWriteTimeUtc)) {
+    $dstExtra = Join-Path $to   $extra
+    if ((Test-Path $srcExtra) -and
+        (-not (Test-Path $dstExtra) -or
+         (Get-Item $srcExtra).LastWriteTimeUtc -ne (Get-Item $dstExtra).LastWriteTimeUtc)) {
       Copy-Item $srcExtra $dstExtra -Force
     }
   }
-  $copy
+  return $copy
 }
 
 $exe     = Join-Path $PSScriptRoot 'victory.exe'
 $console = @()
 
-if ($OptiScaler -and -not (Test-Path (Join-Path $OptiScaler 'OptiScaler.dll'))) { "OptiScaler.dll nao encontrado em: $OptiScaler"; exit 1 }
-if ($FrameGen -and -not $OptiScaler) { '-FrameGen requer -OptiScaler <pasta>'; exit 1 }
+if ($OptiScaler -and -not (Test-Path (Join-Path $OptiScaler 'OptiScaler.dll'))) {
+  Write-Host "OptiScaler.dll nao encontrado em: $OptiScaler"
+  exit 1
+}
+if ($FrameGen -and -not $OptiScaler) {
+  Write-Host '-FrameGen requer -OptiScaler <pasta>'
+  exit 1
+}
 
 if (-not $SeriesX) {
   $useOpti = $OptiScaler -and ($FrameGen -or $Upscaler -eq 'dlss')
   if ($useOpti) {
-    $exe = Initialize-Opti $exe (Resolve-Path $OptiScaler).Path $Upscaler ([bool]$FrameGen)
+    $exe     = Initialize-Opti $exe (Resolve-Path $OptiScaler).Path $Upscaler ([bool]$FrameGen)
     $optiDir = Split-Path $exe -Parent
     $optiFsr = Join-Path $optiDir 'amd_fidelityfx_dx12.dll'
     if (Test-Path $optiFsr) {
@@ -208,7 +250,7 @@ if (-not $SeriesX) {
     Write-Host "[Neptune] OptiScaler ativo: Upscaler=$Upscaler | FrameGen=$([bool]$FrameGen)" -ForegroundColor Green
   } else {
     if ($Upscaler -eq 'dlss' -and -not $OptiScaler) {
-      Write-Host '[Neptune] AVISO: OptiScaler.dll nao encontrado em .\OptiScaler\ - usando FSR padrao (baixe OptiScaler para ativar DLSS)' -ForegroundColor Yellow
+      Write-Host '[Neptune] AVISO: OptiScaler.dll nao encontrado - usando FSR padrao' -ForegroundColor Yellow
     }
     if (-not $FsrDll) {
       $candidates = @(Join-Path $PSScriptRoot 'amd_fidelityfx_upscaler_dx12.dll')
@@ -240,13 +282,15 @@ foreach ($k in $set.Keys) { Set-Item -Path "Env:$k" -Value $set[$k] }
 $env:VICTORY_GAME_DIR = Split-Path -Parent (Resolve-Path -LiteralPath $Game)
 
 if (Get-Process -Name victory -ErrorAction SilentlyContinue) {
-  'O jogo ja esta em execucao.'; exit 1
+  Write-Host 'O jogo ja esta em execucao.'; exit 1
 }
 
 Set-Location $PSScriptRoot
+
 if ($Warm) {
   Write-Host '[Neptune] Pre-aquecendo shaders (pode levar ~7 minutos)...' -ForegroundColor Yellow
   & $exe warm
 }
+
 Write-Host '[Neptune] Iniciando GTA VI...' -ForegroundColor Green
 & $exe run $Game --execute @console

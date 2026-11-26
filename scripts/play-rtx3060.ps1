@@ -48,7 +48,7 @@ if (Test-Path $oldCache) {
   $markerFile = Join-Path $cacheDir '.migrated_from_c'
   if (-not (Test-Path $markerFile)) {
     Write-Host '[Neptune] Migrando cache do C: para F: (primeira vez, aguarde)...' -ForegroundColor Yellow
-    Copy-Item -Recurse -Force $oldCache $cacheDir -ErrorAction SilentlyContinue
+    Copy-Item -Recurse -Force (Join-Path $oldCache '*') $cacheDir -ErrorAction SilentlyContinue
     Set-Content -Path $markerFile -Value (Get-Date).ToString() -Encoding ascii
     Write-Host '[Neptune] Cache migrado com sucesso para F:\jogo\victory_cache' -ForegroundColor Green
   }
@@ -57,7 +57,7 @@ if (Test-Path $oldData) {
   $markerFile2 = Join-Path $dataDir '.migrated_from_c'
   if (-not (Test-Path $markerFile2)) {
     Write-Host '[Neptune] Migrando dados do C: para F: (primeira vez, aguarde)...' -ForegroundColor Yellow
-    Copy-Item -Recurse -Force $oldData $dataDir -ErrorAction SilentlyContinue
+    Copy-Item -Recurse -Force (Join-Path $oldData '*') $dataDir -ErrorAction SilentlyContinue
     Set-Content -Path $markerFile2 -Value (Get-Date).ToString() -Encoding ascii
     Write-Host '[Neptune] Dados migrados com sucesso para F:\jogo\victory_data' -ForegroundColor Green
   }

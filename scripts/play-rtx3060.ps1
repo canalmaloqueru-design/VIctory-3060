@@ -47,12 +47,12 @@ $set = [ordered]@{
   VICTORY_FAST_CORES          = '2'
   VICTORY_PROCESS_PRIORITY    = '1'
 
-  # ---- VRAM (RTX 3060 12 GB) -----------------------------------------------
-  VICTORY_CARD_WINDOWS_MB     = '2048'
-  VICTORY_CARD_BUFFERS_MB     = '1024'
+  # ---- VRAM (RTX 3060 12 GB - margem segura de ~3 GB para DWM/targets) ------
+  VICTORY_CARD_WINDOWS_MB     = '1024'
+  VICTORY_CARD_BUFFERS_MB     = '768'
   VICTORY_CARD_BUFFERS_MIN_KB = '64'
   VICTORY_TEXTURE_STAGE_MB    = '512'
-  VICTORY_TEXTURE_BUDGET_MB   = '7680'
+  VICTORY_TEXTURE_BUDGET_MB   = '6144'
   VICTORY_CARD_ROOM_FOR_TARGETS_MB = '512'
 
   # ---- Gestao de VRAM: evicao agressiva para 12 GB --------------------------
@@ -61,14 +61,12 @@ $set = [ordered]@{
   VICTORY_VRAM_EVICT          = '82'
   VICTORY_SLOT_EVICT          = '1'
   VICTORY_LEVELS_ON_DEMAND    = '1'
-  VICTORY_MIP_CLAMP           = '5'
 
   # ---- Pipeline e shaders --------------------------------------------------
-  VICTORY_PIPELINE_WAIT_MS    = '8000'
+  VICTORY_PIPELINE_WAIT_MS    = '2000'
   VICTORY_DROP_DXIL           = '1'
   VICTORY_DESC_DATA           = '1'
   VICTORY_BIND_CACHE          = '1'
-  VICTORY_SKIP_PIPELINES      = 'none'
   VICTORY_NULL_MAGENTA        = '1'
 
   # ---- Copy / upload / streaming -------------------------------------------
@@ -83,14 +81,13 @@ $set = [ordered]@{
   VICTORY_FOLD_BUFFERS        = '1'
   VICTORY_WINDOW_TAILS        = '1'
   VICTORY_WINDOW_KB           = '1024'
-  VICTORY_STREAM_BEHIND       = '1'
 
   # ---- Listas / indirect ---------------------------------------------------
   VICTORY_THIN                = '1'
   VICTORY_PASSES_AHEAD        = '1'
   VICTORY_CLAMP_AHEAD         = '1'
-  VICTORY_LIST_POOL_MOST      = '2048'
-  VICTORY_LIST_POOL_MB        = '2048'
+  VICTORY_LIST_POOL_MOST      = '1024'
+  VICTORY_LIST_POOL_MB        = '1024'
   VICTORY_LATE_WAIT_LISTS     = '1024'
 
   # ---- Texturas / streaming ------------------------------------------------
